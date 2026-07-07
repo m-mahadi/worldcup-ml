@@ -36,8 +36,8 @@ def main():
     print(df[cols].to_string(index=False))
     df.to_csv(M.ROOT / "outputs" / "metrics.csv", index=False)
 
-    print("\n=== HEADLINE: who advances (national Elo + host advantage, no ML) ===")
-    rq = E.ratings_qualification(host_bonus=70)
+    print("\n=== HEADLINE: who advances (national Elo + geographic home advantage, no ML) ===")
+    rq = E.ratings_qualification()
     print(f"group winners : {rq['group_winners']}/{rq['groups']}  (100% = all called correctly)")
     print(f"qualifiers R32: {rq['r32_hits']}/32")
     print(f"advancement AUC: {rq['advance_auc']:.3f}")

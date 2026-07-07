@@ -9,9 +9,16 @@ import numpy as np
 import pandas as pd
 
 import model as M
+import geo
 
 HOME, DRAW, AWAY = 0, 1, 2
 HOSTS = {"United States", "Mexico", "Canada"}
+
+
+def _geo_adv(mdl: M.PoissonModel, team: str, stadium_id, sid2city) -> float:
+    """Geographic home advantage as a log-goal term for the Poisson model:
+    full = the fitted home-advantage gamma, scaled down by distance."""
+    return mdl.gamma * geo.venue_bonus_elo(team, stadium_id, sid2city) / geo.HOME_ELO_MAX
 
 
 def _auc(scores: list[float], labels: list[bool]) -> float:
@@ -97,6 +104,7 @@ def model_qualifiers(mdl: M.PoissonModel) -> tuple[dict, set, dict]:
     """Expected-points standings from the model's W/D/L probabilities."""
     xpts = defaultdict(float)
     groups = defaultdict(list)
+    sid2city = geo._stadium_city()
     match_hits, match_ll, draws_pred = [], [], 0
     for g in group_games():
         h, a = M.canon(g["home_team_name_en"]), M.canon(g["away_team_name_en"])
@@ -104,7 +112,8 @@ def model_qualifiers(mdl: M.PoissonModel) -> tuple[dict, set, dict]:
         for t in (h, a):
             if t not in groups[gr]:
                 groups[gr].append(t)
-        p = mdl.wdl(h, a, neutral=True, hosts=HOSTS)
+        p = mdl.wdl(h, a, adv1=_geo_adv(mdl, h, g["stadium_id"], sid2city),
+                    adv2=_geo_adv(mdl, a, g["stadium_id"], sid2city))
         xpts[(gr, h)] += 3 * p[HOME] + p[DRAW]
         xpts[(gr, a)] += 3 * p[AWAY] + p[DRAW]
         if str(g.get("finished", "")).upper() == "TRUE":
@@ -130,11 +139,13 @@ def model_qualifiers(mdl: M.PoissonModel) -> tuple[dict, set, dict]:
     return winners, qualified, metrics
 
 
-def ratings_qualification(host_bonus: float = 70.0) -> dict:
+def ratings_qualification() -> dict:
     """The headline model for WHO ADVANCES: rank each group by current national
-    Elo, plus a home-advantage bonus for the three hosts (a real, ~70-Elo effect).
-    No machine learning — and it beats the ML on this target."""
+    Elo plus a geographic home advantage (full for a team in its own country,
+    decaying with travel distance for everyone else). No machine learning — and
+    it beats the ML on this target."""
     elo = M.load_national_elo()
+    home = geo.team_group_home_elo()
     groups = defaultdict(list)
     for g in group_games():
         gr = g.get("group", "")
@@ -143,7 +154,7 @@ def ratings_qualification(host_bonus: float = 70.0) -> dict:
                 groups[gr].append(t)
 
     def strength(t):
-        return elo.get(t, 1500) + (host_bonus if t in HOSTS else 0)
+        return elo.get(t, 1500) + home.get(t, 0.0)
 
     winners, ranked = {}, {}
     for gr, ts in groups.items():
@@ -182,9 +193,11 @@ def qualification_scoreboard(mdl: M.PoissonModel) -> dict:
     advance_acc = (tp + tn) / len(everyone)
     # discrimination: does the model's expected-points rank the advancers above the rest?
     xp = defaultdict(float)
+    sid2city = geo._stadium_city()
     for g in group_games():
         h, a = M.canon(g["home_team_name_en"]), M.canon(g["away_team_name_en"])
-        gr = g.get("group", ""); p = mdl.wdl(h, a, neutral=True, hosts=HOSTS)
+        p = mdl.wdl(h, a, adv1=_geo_adv(mdl, h, g["stadium_id"], sid2city),
+                    adv2=_geo_adv(mdl, a, g["stadium_id"], sid2city))
         xp[h] += 3 * p[HOME] + p[DRAW]; xp[a] += 3 * p[AWAY] + p[DRAW]
     advance_auc = _auc([xp[t] for t in everyone], [t in aq for t in everyone])
     return {**mm, "group_winners": winner_hits, "groups": len(aw),

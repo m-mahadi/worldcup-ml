@@ -146,11 +146,14 @@ class PoissonModel:
         p2 = np.exp(-l2 + k * math.log(l2) - logf)
         return np.outer(p1, p2)  # M[x,y] = P(t1 scores x, t2 scores y)
 
-    def wdl(self, t1: str, t2: str, neutral: bool = True, hosts: set | None = None) -> np.ndarray:
-        if hosts:  # World Cup: only a host nation gets the fitted home advantage
+    def wdl(self, t1: str, t2: str, neutral: bool = True, hosts: set | None = None,
+            adv1: float | None = None, adv2: float | None = None) -> np.ndarray:
+        if adv1 is not None or adv2 is not None:  # explicit home-advantage (e.g. geo)
+            adv1, adv2 = adv1 or 0.0, adv2 or 0.0
+        elif hosts:  # World Cup fallback: only a host nation gets the fitted advantage
             adv1 = self.gamma if t1 in hosts else 0.0
             adv2 = self.gamma if t2 in hosts else 0.0
-        else:      # historical: t1 is the home side unless the match was neutral
+        else:        # historical: t1 is the home side unless the match was neutral
             adv1 = 0.0 if neutral else self.gamma
             adv2 = 0.0
         M = self.score_matrix(t1, t2, adv1, adv2)

@@ -42,7 +42,7 @@ results:
 | Recency weighting (2–3 yr half-life) | Small help |
 | Squad club strength (SPI, Big-Five) | No measurable gain on qualification |
 | Coverage-gating the club signal | Tried, **rejected** — made it slightly worse |
-| **Host advantage for USA/Mexico/Canada** | **Fixes the last group-winner miss** |
+| **Geographic home advantage** | **Fixes the last group-winner miss** |
 
 The pattern is blunt: **one feature — current national strength — carries almost
 all the signal.** The rest is decoration.
@@ -63,8 +63,16 @@ improves *who advances*. The lesson every honest modeller learns eventually: whe
 a simple baseline matches your complex model, the baseline is the story.
 
 The one group winner that pure Elo missed was **Group D — the USA, hosts, beat
-Turkey.** Ratings can't see home advantage; add it back (~70 Elo, a well-known,
-independently-justified effect) and we call all twelve.
+Turkey.** Ratings can't see home advantage; add it back and we call all twelve.
+
+We didn't model home advantage as a host-only switch — it's a **gradient by
+geography** (`src/geo.py`). A team playing in its own country gets the full bonus
+(~95 Elo); everyone else gets a share that decays with the travel distance from
+their country to the actual match venue. So Mexico ≈ 80, USA/Canada 95 at home,
+Haiti/Colombia/Panama/Curaçao 27–44 (near neighbours with big travelling crowds
+and a friendly climate), and Argentina/Japan/Australia just 1–5, flown in from the
+far side of the planet. It captures travel fatigue, time-zones, climate, and
+partisan support in one number — and it's what turns the USA into Group D winners.
 
 ## Step 4 — Where the remaining errors are (and why they're unfixable)
 

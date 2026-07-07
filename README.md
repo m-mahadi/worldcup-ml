@@ -6,7 +6,8 @@ and a clear line between what a model can and cannot know about football.
 ## The headline result
 
 **We predict who wins each group with 100% accuracy (12/12), and who advances
-with 84% accuracy (27/32) — using current national ratings plus home advantage.**
+with 84% accuracy (27/32) — using current national ratings plus a geographic
+home advantage.**
 
 Match-by-match win/draw/loss tops out around **63%**, because ~28% of matches are
 draws and draws are close to random. That is a wall, not a bug: bookmakers, who
@@ -23,17 +24,26 @@ match results is leaking the answer into the model (we demonstrate exactly how).
 
 ## The one honest surprise
 
-A plain **ranking by current national Elo, plus a home-advantage bonus for the
-three hosts, beats the machine-learning model** on qualification. The fancy
-Poisson goals model, gradient tricks, and squad-chemistry features add nothing to
-*who advances*. The signal that matters is simply: how good is each team right now,
-and who is playing at home. Everything else is the tournament being partly random.
+A plain **ranking by current national Elo, plus a geographic home advantage,
+matches or beats the machine-learning model** on qualification. The fancy Poisson
+goals model, gradient tricks, and squad-chemistry features add nothing to *who
+advances*. The signal that matters is simply: how good is each team right now, and
+how close to home they're playing. Everything else is the tournament being partly
+random.
+
+**Home advantage is modelled as a gradient, not a switch.** A team in its own
+country gets the full bonus; everyone else gets a share that decays with travel
+distance to the actual match venue (`src/geo.py`). So Mexico ≈ 80 Elo, USA/Canada
+95 at home, Haiti/Colombia/Panama/Curaçao 27–44 (nearby + big travelling support),
+and Argentina/Japan/Australia 1–5 (flown across the world). That's why USA win
+Group D over Turkey — a call pure ratings miss.
 
 ## What's in here
 
 ```
 data/raw/         inputs (international results, national Elo, WC fixtures, SPI, squads)
 src/model.py      Poisson goals model (attack/defence by weighted MLE) + national-Elo blend
+src/geo.py        geographic home advantage (distance-decayed travel/crowd bonus)
 src/evaluate.py   walk-forward match eval + group-stage qualification + advancement AUC
 src/run.py        fits every config, runs feature selection, prints the scoreboard
 outputs/          metrics.csv (all configs) + report.md (the write-up)
@@ -64,7 +74,9 @@ PYTHONPATH=src python src/run.py
   engine generalizes at ~62%, so the World Cup numbers aren't a fluke.
 - The national Elo is a *current* snapshot, so its blend weight can only be tuned
   on these 72 games — we keep it modest to avoid memorising them.
-- The host bonus (~70 Elo) is independently justified: home advantage is one of
-  the most robust effects in football. It fixes exactly the one miss (host USA).
+- The geographic home advantage is independently justified: home advantage is one
+  of the most robust effects in football (~60–100 Elo). We model it as a smooth
+  decay with travel distance rather than a host-only switch, and it fixes exactly
+  the one miss pure ratings make (host USA over Turkey).
 
 See `outputs/report.md` for the full step-by-step story.
