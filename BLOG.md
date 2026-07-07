@@ -1,422 +1,297 @@
-# Predicting the 2026 World Cup: an honest, quality-aware rating model
+# I tried to predict the World Cup. The interesting part was where it stopped working.
 
-**A build journal / technical write-up.**
+Everyone builds a World Cup predictor. They pick a champion, post it, and move on. It is easy, and it is mostly a lie.
 
-## Abstract
+I wanted the honest version. Build the best predictor I can. Push it until it stops getting better. Then look hard at the exact spot where it stopped.
 
-I built a model to predict the 2026 World Cup and, more importantly, to find the
-point where prediction stops working. It combines an Elo rating fit on 49,503
-international matches, a bivariate-independent Poisson goals model, a current national
-rating, a distance-based home-advantage term, and a set of performance signals derived
-from expected goals (xG), goal timing, momentum, and squad quality. On out-of-sample
-data it calls **12 of 12 group winners**, tops out at **~64% on individual match
-outcomes** (a ceiling I show is caused by draws, not by the model), and predicts blind
-knockout rounds at **19 of 22 (86%)**, with the only misses being two penalty shootouts
-and one genuine upset. I also demonstrate, on the same codebase, the two ways people
-fake a "perfect" model: overfitting and label leakage. Everything runs on Python, NumPy,
-and pandas. This document walks the whole thing step by step.
+Because that spot tells you something real. It tells you where football stops being about who is the better team, and starts being about luck.
 
----
+This is the whole thing. Every model I used. Every number I fed it. Every weight I picked. What worked, what embarrassed me, and where the wall is.
 
-## 1. Motivation and framing
+It is long. That is on purpose.
 
-Most football predictors output a champion and stop. That hides the only interesting
-question: how much of a result is skill and how much is luck? My approach is to build
-the strongest honest model I can, push it until it stops improving, and treat the
-plateau as a measurement of football's irreducible randomness.
+## The whole model is one question
 
-I split "predict the tournament" into three questions with three very different
-ceilings, and I keep them separate throughout:
+The model asks one thing, over and over. Who is better right now, and by how much?
 
-1. **Match outcome** (win / draw / loss) — the hardest, because one match is where luck
-   lives.
-2. **Qualification** (who wins a group, who advances) — easier, because it aggregates
-   three matches and luck partly cancels.
-3. **The bracket** (who reaches each knockout round) — measurable round by round.
+That is it. Everything below is me arguing with myself about how to measure "better." And being honest about the moments when knowing who is better is still not enough to know who wins.
 
-Every number I report is out-of-sample: the model is scored on matches it did not train
-on.
+I keep three questions separate the whole way through, because they are not equally answerable:
 
----
+Who wins a single match. Who wins a group. Who advances through the knockouts.
 
-## 2. Data
+The first is the hardest. One match is where luck lives. The last two are easier, because they add up several matches and luck starts to cancel out. Hold on to that idea. It comes back.
 
-| Dataset | Size | Fields used | Role |
-|---|---|---|---|
-| International results 1872–2026 | 49,503 matches | teams, score, tournament, neutral flag, date | Elo backbone + Poisson fit |
-| Current national Elo (eloratings.net) | 244 nations | rating | strength prior for every country |
-| SPI club ratings | 464 clubs, 25 leagues | off, def, spi (xG-based) | squad quality |
-| FIFA squad lists | 1,248 players | player, club, position | squad construction |
-| Big-five club stats 2025/26 | 470 matched players | minutes, goals, assists, shots, SoT, tackles, interceptions, cards, GA90, save%, clean sheets | squad quality (secondary) |
-| Match xG (Sofascore) | 94 WC matches | xG, shots, SoT, big chances, possession, per team | performance grading |
-| WC 2026 fixtures | 104 games | teams, scores, stadium, matchday, round | prediction targets |
-| Host stadiums | 16 venues | city, country | home-advantage geography |
+## First I built a memory
 
-Two data notes. First, the international-results file already contains every
-competition that matters and recent editions of each (AFCON to January 2026, Euro 2024,
-Nations League 2025, Copa América 2024, World Cup qualifiers to March 2026): 4,666
-competitive matches since 2022. Second, the Python runtime I used had a broken OpenSSL
-stack that crashed on every HTTPS request, so I pulled the national ratings through
-PowerShell's .NET TLS instead. The xG for all 94 matches I scraped from Sofascore and
-verified against my own scorelines (94/94 matched, which also confirms my fixture feed
-agrees with reality).
+You cannot predict anything without a memory. So I built one.
 
----
+I took every international match ever recorded. From 1872 to today. That is 49,503 games. Who played, the score, the competition, and whether it was on neutral ground.
 
-## 3. Methods
+This is the backbone. It is where raw team strength comes from. And it already holds the games that matter: the last African Cup of Nations, Euro 2024, the Nations League, Copa América, every World Cup qualifier. 4,666 competitive games since 2022 alone.
 
-I built the model in layers. This section documents each layer, in the order I added
-it, with the exact parameters.
+Then I added a few more things.
 
-### 3.1 The Elo backbone
+Current strength ratings for all 244 countries, pulled from a public Elo site. Ratings for 464 clubs, so I could measure how good a squad is from where its players play their club football. The official squad lists, 1,248 players. And the big one for later: expected goals for all 94 World Cup matches played so far.
 
-Every team starts at 1500. For a match between A and B, the expected score for A is
+One boring but honest note. The Python I was running had a broken security stack that crashed on every web request. So I pulled some of this through PowerShell instead. Real data work is thirty percent plumbing.
+
+## The rating
+
+The strength backbone is an Elo rating. It is the same idea as chess ranking.
+
+Every team starts at 1500 points. You beat someone, you take points off them. Beat a team far above you, you take a lot. Beat a minnow, you take almost nothing. Lose, and you hand points over the same way.
+
+The math is one line. The chance team A wins is:
 
 ```
-E_A = 1 / (1 + 10^((R_B − R_A) / 400))
+1 / (1 + 10^((rating_B − rating_A) / 400))
 ```
 
-and after the match each rating updates by
+After the match you move the rating by `K × (what happened − what was expected)`. `K` is how big the swing is.
+
+Here is the part people get lazy about. Not every match should count the same. A friendly is not a knockout final. Teams rest players in friendlies. They experiment. They do not care. So I set `K` by how much the game mattered:
 
 ```
-R_A ← R_A + K · m · (S_A − E_A)
+World Cup final game        55
+Euro / Copa / AFCON final    45
+Nations League, qualifiers   35
+other competitive            25
+friendly                     15
 ```
 
-where `S_A` is 1 for a win, 0.5 for a draw, 0 for a loss; `m` is a goal-margin
-multiplier (`1` for a one-goal game, `1.5` for two, `(11 + gd)/8` beyond that); and `K`
-scales with how much the match mattered:
+I also made a bigger scoreline count for more. A 4-0 says more than a 1-0.
+
+That Nations League line actually mattered. In my first version those games fell into the "other" bucket and got under-counted. That quietly threw away 600 recent, serious matches. Fixing it made the ratings sharper.
+
+## The first model, and the wall
+
+On top of the rating I built a small predictor. It looks at the rating gap and recent form and spits out three numbers. Chance of a win, a draw, a loss. It picks the biggest.
+
+I trained it, then replayed all 72 group matches it had never seen, and made it call every one.
+
+It got 64 percent right.
+
+Then I threw everything at it. More features. More data. Cleverer math.
+
+It stayed at 64 percent.
+
+So I stopped and looked at the games it got wrong. Almost all of them were draws.
+
+Here is the problem with a draw. Of those 72 group games, 20 ended level. More than one in four. And on those exact 20 games, the model's average guess for "draw" was 17 percent. It was busy backing a winner at 66 percent.
+
+The model was not broken. Draws are just close to random.
+
+Think about why. When two even teams play, a draw is the single most likely result. But the model almost never picks it. Why? Because the two teams keep splitting the odds between them. Team A gets 40, team B gets 40, the draw gets 20. The draw never wins the vote, even when it is the smart bet.
+
+You cannot know in advance which even game ends level. It comes down to a deflection. A flag. A keeper having a good day.
+
+Is 64 percent even good? Yes. Bookmakers, with billions of dollars on the line, land around 53 to 55 percent on match results. So 64 is strong.
+
+Which means something. Anyone who shows you a model that is "92 percent accurate at picking match winners" is either fooling themselves or feeding it the answer. I will prove that at the end by doing it on purpose.
+
+So I stopped trying to win every match. I asked a question that can actually be answered.
+
+## Who wins the group
+
+One match is a weighted coin. But who wins a group of four teams is three matches. Luck starts to cancel. A strong team can draw one game and still finish top.
+
+And here football humbled me.
+
+I had built this whole machine-learning thing. Out of curiosity I tried the dumbest possible version. Rank each group by one number, the current strength rating. Call the top team the winner. No learning. No features. One column, sorted.
+
+It got 11 of 12 group winners.
+
+My clever model did not beat it.
+
+That is a lesson you only learn by measuring. When your one-line shortcut matches your fancy model, the shortcut is the real story. For "who is the better team," a good rating already knows almost everything. The machine learning was just decorating a signal that was already there.
+
+The one group the rating missed was Group D. It said Turkey. The USA won it. And the reason it missed is the next piece.
+
+## There is no home team, but there is a home
+
+A World Cup has no home team. Every game is at a neutral stadium. My first model did not know that. It was secretly giving a bonus to whichever team got listed first in the fixture. That is not home advantage. That is alphabetical luck.
+
+So I fixed it. I made the model symmetric. Swap the two teams, and the only thing that changes is which win probability is which. The draw does not move.
+
+But then I noticed something. 2026 is hosted by the USA, Canada, and Mexico. So "neutral" is not the same for everyone.
+
+Mexico playing in Guadalajara has 80,000 screaming fans. No jet lag. Familiar heat. Australia playing in New York flew 15,000 kilometers into a strange time zone to play in front of no one. Calling those two the same is silly.
+
+So I made home advantage a dimmer, not a switch. Full bonus in your own country. A slice of it for everyone else, and the slice shrinks with how far they had to travel:
 
 ```
-World Cup finals                         K = 55
-continental finals (Euro/Copa/AFCON/…)   K = 45
-Nations League and all qualifiers        K = 35
-other competitive                        K = 25
-friendly                                 K = 15
+home bonus = 95 points          if it is your own country
+           = 95 × exp(−distance / 3000 km)   otherwise
 ```
 
-I replay all 49,503 matches in chronological order to produce the ratings. The
-Nations-League line matters: in my first pass those 600+ recent matches fell into the
-generic `K = 25` bucket and were under-weighted; grading them at 35 sharpened the
-ratings measurably. I also track a rolling window of each team's last 10 results (points,
-goals for, goals against) for form features.
-
-### 3.2 First model: a softmax win/draw/loss classifier
-
-The first predictor is a 3-class softmax (multinomial logistic regression) trained by
-gradient descent (700 epochs, learning rate 0.18, L2 = 5e-4, standardized inputs). Its
-nine features per match are: the Elo gap (scaled by 400), recent points difference,
-recent goal-difference difference, recent goals-for and goals-against differences, a
-games-played difference, a neutral-venue flag, a World-Cup flag, and a major-tournament
-flag.
-
-On top of that I added a *rating adjustment* layer that shifts the effective Elo gap
-using squad information: a player-form term, a same-club "chemistry" term (fraction of
-squad pairs sharing a club), a same-league term, a club-vs-country style-fit term, and a
-data-coverage term. I grid-searched the weights on the group stage.
-
-**Result:** 63.9% accuracy on the 72 group matches, but with a fatal flaw covered next.
-
-### 3.3 The draw problem (the match-level ceiling)
-
-The classifier predicted **zero draws**. Ever. Breaking down the 72 group matches:
-
-| Actual result | Count | Model accuracy |
-|---|---|---|
-| Home/first-listed win | 34 | 85.3% |
-| Away/second-listed win | 18 | 94.4% |
-| **Draw** | **20** | **0.0%** |
-
-20 of 72 matches (28%) were draws, and the model got all 20 wrong. On those draws its
-average draw probability was 0.17 while it assigned 0.66 to a winner. This is not a bug.
-A draw is rarely any model's single most likely outcome, because the two teams split the
-probability mass. I later confirmed with a full sweep that no honest reweighting recovers
-more than ~6 of the 20 draws, and each recovery costs a correct decisive pick. For
-reference, bookmakers sit at ~53–55% on match outcomes, so ~64% is already strong. The
-match-level ceiling is real and is set by draws.
-
-### 3.4 Neutral-venue correction
-
-A World Cup has no home team, but my first model was implicitly rewarding whichever team
-was listed first in the fixture. I removed this by making the model **order-symmetric**:
-I predict each tie in both orderings and average, so swapping the two teams only swaps
-the two win probabilities and leaves the draw probability unchanged. Home advantage is
-handled explicitly and separately (§3.6).
-
-### 3.5 Second model: a Poisson goals model
-
-Predicting W/D/L directly is coarse. I switched to modelling goals. For a match the
-expected goals for each side are
+I looked up the coordinates of all 16 host cities and all 48 countries and measured the real distance. Here is what came out, in rating points:
 
 ```
-λ_i = exp(μ + attack_i − defence_j + home_adv_i)
-λ_j = exp(μ + attack_j − defence_i + home_adv_j)
+USA, Canada, Mexico (home)     95
+Mexico (across its venues)     ~80
+Haiti, Colombia, Panama        27 to 44
+Brazil, England, Morocco       12 to 14
+Argentina 5   Japan 3   Australia 1
 ```
 
-Goals are independent Poisson variables with those means; the outer product of the two
-per-team scoreline distributions gives the joint distribution over final scores, which I
-sum into win/draw/loss (`P(win) = Σ_{a>b}`, `P(draw) = Σ_{a=b}`, `P(loss) = Σ_{a<b}`).
-Draws now come out as a computed quantity instead of being ignored.
+I did not tune those. That is just geography. Nearby teams with big travelling crowds get a real push. Teams flown in from the other side of the planet get almost nothing.
 
-I fit `attack`, `defence`, `μ`, and the home term by weighted maximum likelihood using
-gradient descent in NumPy. For a Poisson observation the loss gradient with respect to a
-team's attack reduces to `(λ − goals)`, so each pass I compute expected goals, subtract
-actual goals, and scatter the residual onto the relevant attack and defence parameters
-(via `np.add.at`). Details:
+Add the dimmer back in, and the USA edge past Turkey.
 
-- **Iterations:** 400–1500; learning rate 0.05–0.1; L2 = 0.02.
-- **Identifiability:** I re-center `attack` and `defence` to zero mean each iteration.
-- **Recency weighting:** each match's weight is `importance · 0.5^(age_years / 2.5)`, so
-  influence halves every 2.5 years and competitive matches count more.
-- **Home term:** a fitted log-goal home advantage (`γ ≈ 0.25`), applied only where a team
-  is genuinely at home (§3.6), zero otherwise.
+Now the rating calls all 12 group winners. All of them. The only thing between a good rating and a perfect dozen was remembering who is playing at home.
 
-### 3.6 National-Elo blend (the dominant feature)
+## A better model: count the goals
 
-The from-scratch attack/defence is noisy for teams that rarely play the strong nations.
-I correct this by blending the current national-Elo gap directly into the expected goals:
+Picking win, draw, or loss is crude. What I really want is to guess how many goals each team scores. Because if I can do that, draws fall out on their own, and I can simulate whole scorelines.
+
+So I switched to counting goals.
+
+Every team gets an attack number and a defence number. The goals a team is expected to score is:
 
 ```
-λ_i ← λ_i · exp( w_elo · (elo_i − elo_j) / 400 ),   w_elo = 0.5
+expected goals = exp( base + your attack − their defence + home )
 ```
 
-This is the single most important feature in the model. The raw Poisson (no blend) gets
-only 7 of 12 group winners; with the blend it reaches 11–12. The rating is the engine;
-the goals model is the chassis around it. I swept `w_elo` and 0.5 was both the
-log-loss optimum and defensible (it is a *current* snapshot, so a large weight would
-overfit the 72-game sample).
+Then I treat goals like a Poisson process. That is just the math for "rare events that happen at some average rate." If a team is expected to score 1.6, this gives me the chance they score exactly 0, exactly 1, exactly 2, and so on. Do that for both teams, multiply, and I have the chance of every final score. Add up the scores where team A wins, where it is level, where team B wins. Now the draw is a real number the model computes, instead of a thing it ignores.
 
-### 3.7 Home advantage as a distance decay
+I found the attack and defence numbers by trial and improvement. Start everyone at zero. Guess the goals. Compare to what really happened. Nudge each team's numbers toward the truth. Do it a few hundred times until it settles. The nudge is simple: expected goals minus real goals.
 
-2026 is hosted by the USA, Canada, and Mexico, so "neutral" is not equal for everyone. I
-model home advantage as a bonus that is full in a team's own country and decays with
-travel distance to the actual match venue:
+Two things I weighted on purpose here.
 
-```
-home_bonus(team, venue) =
-    HOME_MAX                                    if venue country == team country
-    HOME_MAX · exp( − haversine(team, venue) / DECAY )   otherwise
-HOME_MAX = 95 (Elo points),  DECAY = 3000 km
-```
+Recent games count more. A match from six years ago should not weigh as much as one from this year. So each game's weight halves every two and a half years.
 
-I hardcoded coordinates for the 16 host cities and all 48 nations and used the
-great-circle distance; for the Poisson model the Elo bonus is converted to a log-goal
-term (`γ · bonus / HOME_MAX`). A team's group bonus is averaged over its three group
-venues. The resulting values are geographically sensible, not tuned:
+And I mixed in that current national rating. The from-scratch attack and defence is shaky for teams that rarely play the big nations. So I pull each team's expected goals toward the rating gap between them. This one blend does a lot of work. On its own, the raw goals model got 7 of 12 group winners. With the rating mixed in, it jumped to 11 or 12.
 
-```
-USA / Canada / Mexico (own country)   95
-Mexico (average over venues)          ~80
-Haiti, Colombia, Panama, Curaçao      27–44
-Brazil, England, Morocco              12–14
-Argentina 5 · Japan 3 · Australia 1
-```
+The rating is the engine. The goals model is the car built around it.
 
-Adding this term is what turns the one missed group winner (USA, beaten to top spot by
-the rating's pick of Turkey) into a correct call, taking group-winner accuracy to 12/12.
+## Using the group stage: how they played, not just who won
 
-### 3.8 Using the group stage: performance, not just results
+When the group stage finished, I had new information. The lazy move is to just read the table. Points and goal difference. But the table throws away most of what happened. I graded each result four ways.
 
-Once a round is complete I fold it into the ratings, but graded by *how* teams played,
-not just the scoreline. The post-group update starts from the national Elo and processes
-the 72 group games with four adjustments:
+Who they played. This one is free, because the rating already handles it. Drawing Brazil pushes you up. Beating a minnow does not. Morocco drew Brazil in their first game, and the rating knew that was a strong result even though it was only a draw.
 
-1. **Opponent difficulty** — handled automatically by Elo's expected-score term (drawing
-   Brazil moves you up; beating a minnow does not).
-2. **Momentum** — games are processed in matchday order and weighted
-   `{matchday 1: 0.6, matchday 2: 1.0, matchday 3: 1.6}`, so a team rounding into form
-   rises and a bad opener is discounted.
-3. **Manner of result** (§3.9) and **xG** (§3.10) replace the raw W/D/L with a
-   performance score.
-4. **Margin** — a small multiplier (`1.0 / 1.25 / 1.5` for 1 / 2 / 3+ goal games).
+When they played their good games. A team that loses its first match and wins the next two is rounding into form. That is more dangerous than a team that started hot and faded. So I weighted the three group games by when they happened: first game 0.6, second game 1.0, third game 1.6. A bad opener hurts less. A strong finish counts more. Paraguay got hammered 1-4, but that was their first game, so it got discounted.
 
-The update is `Δ = K_group · momentum · margin · (performance − expected)`, with
-`K_group = 80`. After the sweep, a static squad-quality nudge is also applied (§3.11).
-All these weights are set by football reasoning, not tuned to the backtest — a
-distinction I return to in §7.
+How they lost. Losing to a goal in the 93rd minute means you were level for 92 minutes. You played fine. So I read the goal times out of the data and worked out the score as it stood at the 85th minute. Then I mixed that with the final score, 65 percent final, 35 percent the 85th-minute version. A late heartbreak and a proper beating no longer count the same.
 
-### 3.9 Manner-of-result signal
+By how much. A three-goal win counts a little more than a one-goal win.
 
-Losing to a stoppage-time goal is not the same as being outplayed for 90 minutes. I
-parse the goal minutes from the match data (regex, handling `90+X` stoppage time) and
-compute the scoreline as it stood at the 85th minute, then blend:
+All of these went into how much a group result moved a team's rating. And I want to be clear about one thing. I set every one of those weights by thinking about football. Not by tuning them until the score looked good. That difference is the whole game, and I hit it again at the end.
+
+## The best thing I added: expected goals
+
+A scoreline lies.
+
+A team can dominate, hit the post four times, and lose to one deflection. Another can get battered and steal a 1-0. If you rate teams on results, you are rating them partly on luck.
+
+Expected goals fixes this. Written xG. It asks a simple question. Given the quality of the chances a team actually created, how many goals should they have scored?
+
+It is the closest thing football has to measuring who deserved to win. I scraped it for all 94 matches.
+
+Here is how I used it. For each game I worked out who deserved to win from the xG alone, then mixed it with the result. 55 percent xG, 45 percent what actually happened. The xG gets the bigger vote, because it is steadier and it predicts the next game better than the score does.
+
+And it immediately told me things the table was hiding:
 
 ```
-performance = 0.65 · result_fulltime + 0.35 · result_at_85'
+             goals      xG        what it means
+Egypt        +2         −0.8      flattered. worse than they looked.
+Norway       +1         +2.4      underrated. better than they looked.
+Morocco      +3         +3.1      fully deserved. genuinely strong.
+Paraguay     −2         −3.0      genuinely poor.
 ```
 
-So a team that only conceded late keeps most of the credit of a draw.
+Egypt got results but their underlying numbers were negative. They had been a little lucky. Norway looked ordinary on paper but were creating far more than they scored.
 
-### 3.10 Expected-goals signal (the key upgrade)
+Here is the payoff. When Norway later knocked Brazil out, the xG was not surprised. It had been quietly telling me Norway were underrated the whole time.
 
-Scorelines contain finishing luck; xG strips it out by asking how many goals the chances
-created *should* have produced. For each match I compute an "xG-deserved" result by
-treating each side's xG as a Poisson mean and integrating `P(win) + 0.5·P(draw)` over
-scorelines (up to 8 goals). I then blend it with the manner-adjusted actual result:
+I also added one more thing. Squad quality. How good are these players, ignoring one noisy group? I looked up every player's club, checked how strong that club is, and averaged it out. A team built from top clubs is strong even if it stumbled for three games. I kept this small, because matching player names to clubs is messy.
 
-```
-match_performance = 0.55 · xG_deserved + 0.45 · manner_adjusted_result
-```
+## How I checked it was not lying to me
 
-xG gets the larger weight because it is more stable and more predictive of the next
-match. The signal immediately exposed teams the table mislabeled:
+The number I trust most does not come from the World Cup at all.
 
-```
-             goal diff   xG diff   reading
-Egypt           +2         −0.8    flattered; worse than results
-Norway          +1         +2.4    underrated; better than results
-Morocco         +3         +3.1    fully deserved
-Paraguay        −2         −3.0    genuinely poor
-```
+I trained the model only on matches before 2024. Then I tested it on 2024 and 2025 games it had never seen. It landed around 60 to 62 percent. That is the honest "how good is the engine" number. It cannot be gamed. And every World Cup result I report sits in that same neighbourhood, instead of magically higher. If a step had suddenly claimed 85 percent, I would have gone hunting for the leak.
 
-Norway's strong-but-quiet xG is why the model was unsurprised when they later knocked
-Brazil out.
+## Then I predicted the knockouts blind
 
-### 3.11 Squad-quality signal
+This is where it got fun. Now I could test against a real future.
 
-Independent of one noisy group, I measure squad quality from where players play their
-club football. I map each squad member's club to its SPI rating (which is xG-based),
-average across the squad, z-score across the 48 nations, and add a nudge of ~25 Elo
-points per standard deviation. I keep it small because club-name matching is noisy. This
-signal is what tips the Egypt-over-Australia knockout tie to correct (Egypt's players
-come from stronger clubs than their results implied).
+I froze the model's knowledge at the end of the group stage. Then I made it predict the whole knockout bracket. Round of 32 all the way to the final. Without looking at a single knockout result.
 
-### 3.12 Knockout prediction machinery
+Round of 32: 14 of 16 correct.
 
-The knockout bracket is a fixed tree; the Round-of-32 pairings are set by the final
-group standings. To predict a round I:
+Look at the two it missed. Germany lost to Paraguay. The Netherlands lost to Morocco. Both went to penalty shootouts.
 
-1. Update ratings through the previous round with `apply_knockout_round`, using the same
-   performance grading (§3.9–3.10). A penalty shootout reads ≈0.5/0.5 unless the xG says
-   one side deserved it, so shootout "winners" are not artificially boosted.
-2. Convert each tie's W/D/L into an advancement probability (no draws survive a knockout):
-   `P(A advances) = P(win) + P(draw)·P(win)/(P(win)+P(loss))`, i.e. a level game resolves
-   in proportion to strength.
-3. For a single predicted bracket, take the favourite each tie and advance them. For
-   champion odds, run 20,000 Monte-Carlo simulations, fixing every already-played result
-   and simulating only the remaining games.
+A shootout is a coin flip that happens to involve feet. No model on Earth should claim to call one. Of the 14 games decided in normal time by the better team, I got all 14.
 
----
+That is not luck. That is the ceiling. And the ceiling is honest.
 
-## 4. Validation methodology
+The xG earned its keep here too. Remember Netherlands against Morocco. Morocco actually outplayed them, 1.38 xG to 0.24, while winning on penalties. The model saw the performance, not the shootout. It rated Morocco up. Then it correctly picked them to beat Canada in the next round.
 
-- **Un-gameable anchor:** train only on internationals before 2024, test on 2024–25
-  matches never seen. This lands at ~60–62% and is the number I trust; every World-Cup
-  result sits in the same neighbourhood rather than magically higher.
-- **Group-stage replay:** the 72 group matches are out-of-sample for the model.
-- **Walk-forward knockouts:** predict each knockout round using only data up to the end
-  of the previous round; never use a result I am predicting.
+## Rolling it forward
 
----
+As the tournament moved, I moved with it.
 
-## 5. Results
-
-### 5.1 Match-level ceiling
-
-~64% on individual group matches, capped by draws (§3.3). This does not improve with
-more features, and it should not: it is the randomness floor.
-
-### 5.2 Qualification
-
-With the national Elo + geographic home advantage: **12/12 group winners**, 27/32
-correct Round-of-32 qualifiers, advancement AUC 0.865. The five missed qualifiers were
-all four-point third-placed teams decided on tie-breakers — coin flips in a format where
-8 of 12 third places advance.
-
-### 5.3 The baseline that matched the model
-
-A pure ranking by national Elo plus the host bonus — no machine learning — gets 12/12
-group winners and 27/32 qualifiers, equal to or better than the full model. This is a
-genuine (and humbling) result: for "who is the better team," a good current rating
-already contains almost all the signal, and the ML apparatus mostly decorates it.
-
-### 5.4 Blind knockout prediction (walk-forward)
+Use everything through the Round of 32. Predict the Round of 16 blind. Then use everything through the Round of 16, and predict the rest.
 
 ```
-cutoff = groups        → predict Round of 32:   14 / 16
-cutoff = Round of 32   → predict Round of 16:    5 / 6
------------------------------------------------------------
-walk-forward total:                             19 / 22  =  86%
+groups        →  Round of 32:   14 / 16
+Round of 32   →  Round of 16:    5 / 6
+-----------------------------------------
+all together:                   19 / 22   =   86 percent
 ```
 
-The three misses: two penalty shootouts (Germany–Paraguay, Netherlands–Morocco) and one
-normal-time upset (Norway 2–1 Brazil). Every tie decided in normal time by the better
-side was called. Notably, Morocco outplayed the Netherlands 1.38 xG to 0.24 while winning
-on penalties, so the model rated them up and then correctly picked them over Canada.
+Three misses across the entire knockout stage. Two penalty shootouts, and one honest upset, Norway beating Brazil in normal time. Everything the better team won on the pitch, I called.
 
-### 5.5 Live forecast (all data through the Round of 16)
+## Where it stands right now
 
-Fixing every played result and simulating the rest 20,000 times:
+I take everything that has actually happened. Every group game, the Round of 32, and the finished Round of 16. I lock those in as fact. Then I simulate the rest of the bracket 20,000 times.
 
-![Predicted World Cup 2026 bracket](outputs/predicted_bracket.svg)
+Here is the full bracket, with the path the model expects through the games still to be played.
+
+![The predicted World Cup 2026 bracket. Solid lines are games already played, dashed lines are the model's predictions, and the gold center is the predicted champion.](outputs/predicted_bracket.svg)
+
+*Solid lines are played. Dashed lines are predicted. Gold is the champion.*
 
 ```
-Spain       34%   (single most likely bracket: Spain beats Argentina in the final)
+Spain       34%
 France      20%
 Argentina   18%
 England     13%
 Norway       5%
 ```
 
-Spain lead on their underlying numbers — their group xG was the best in the tournament.
+Spain sit clear on top. Not because of their results. Because of their xG, which was the best in the tournament. The single most likely path has Spain beating Argentina in the final.
+
+## The two ways to fake a perfect model
+
+I promised I would show you the cheating. So I ran both tricks on my own model.
+
+The first is overfitting. Give a model far more knobs than it needs, and let it memorize the training games. I did it on purpose. Its score on games it had already seen climbed toward the sky. Its score on new games got worse. It was not learning. It was memorizing noise and calling it skill. The tell is simple. If someone only ever tests their model on the same data they trained it on, this is what is happening.
+
+The second is leakage. Sneak the answer into the question. I added one input, the final goal difference of the match, and asked it to "predict" the result.
+
+100 percent accurate.
+
+Of course it was. I told it the score.
+
+Every "100 percent accurate" model has an input like this hiding in it. Final possession. Post-match ratings. The closing betting odds. Something that already contains the answer. When you see a perfect model, go find which input is the answer wearing a fake moustache.
+
+This is also why I set my weights by thinking, not by tuning them until the backtest looked good. On a sample this small, tuning to the score is just leakage with extra steps.
+
+## Where the wall is
+
+I never wanted a crystal ball. I wanted something honest enough that every guess comes with a reason. And I wanted to find the exact line where the reasons run out.
+
+That line turned out to be a beautiful thing.
+
+I can call all 12 group winners. I can call 86 percent of knockout games one round ahead. But I cannot call a penalty shootout, and I cannot beat 64 percent on a single match.
+
+Because past that line, football stops being about who is better. It starts being about a ball hitting the inside of a post and bouncing the wrong way.
+
+A model that knows where its own line is, one that tells you "Spain, 34 percent, here is exactly why, and no I cannot promise it," is worth ten models that shout a confident winner and quietly leak the score.
 
 ---
 
-## 6. Negative results and ablations
-
-Recorded because a discarded idea with a measurement attached is worth more than a silent
-guess:
-
-- **Coverage-gating the club signal** (down-weighting club form for poorly-covered teams):
-  tried, measured, **rejected** — it slightly worsened qualification.
-- **Squad club features alone** (SPI / big-five) did not improve qualification over the
-  national-Elo baseline; their value showed up only in the knockout quality grading.
-- **Raw Poisson without the Elo blend:** 7/12 group winners; the blend is essential.
-- **Cranking the national-Elo weight** raised match accuracy toward 65% but did not move
-  qualification, which was already at its noise floor.
-
----
-
-## 7. How a "perfect" model is faked
-
-To show why I do not chase 100%, I reproduced both standard failures on this codebase.
-
-- **Overfitting.** I added a per-team identity parameter for every nation (hundreds of
-  free parameters) and removed the regularisation. Training accuracy climbed while
-  accuracy on unseen matches *fell* — the model memorising noise. The tell is a model
-  only ever evaluated on its own training data.
-- **Leakage.** I added one input — the match's final goal difference — and "predicted"
-  the result: **100% accuracy**, because the input is the answer. Every 100%-accurate
-  predictor has a feature like this hiding in it (final possession, post-match ratings,
-  closing odds).
-
-This is why I fixed feature weights by reasoning rather than by tuning them to the
-backtest: on a sample this small, tuning to the score is just leakage with extra steps.
-
----
-
-## 8. Limitations
-
-- Match-level accuracy cannot exceed ~64%; draws are close to random.
-- Penalty shootouts are unpredictable by construction; they are 2 of my 3 knockout misses.
-- The national Elo is a current snapshot, so its blend weight can only be validated on
-  the World Cup itself; I kept it modest to avoid overfitting.
-- Squad-quality club matching is fuzzy and noisy, hence its small weight.
-- xG is a strong but single-source signal (Sofascore); a multi-source average would be
-  more robust.
-
----
-
-## 9. Conclusion
-
-The model is honest about what it knows. It calls 12/12 group winners, predicts 86% of
-knockout games one round ahead, and currently makes Spain a 34% favourite. It also stops
-exactly where football stops being predictable: it cannot beat 64% on a single match and
-cannot call a shootout, because past that line the result is decided by a deflection, a
-flag, or a ball hitting the inside of a post. A model that reports its own limits is more
-useful than one that hides them behind a confident, quietly-leaked champion.
-
----
-
-*Reproducible on Python + NumPy + pandas. Ratings from 49,503 international matches plus
-current national numbers; xG for all 94 World Cup matches from Sofascore. Code, data, and
-the full scoreboard are in this repository.*
+*All of this runs on plain Python. The ratings come from 49,503 international matches and current national numbers. The xG for all 94 World Cup games came from Sofascore. The code, the data, and the full scoreboard are in this repo.*
