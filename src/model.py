@@ -29,6 +29,7 @@ ALIASES = {
     "Côte D'Ivoire": "Ivory Coast", "Czechia": "Czech Republic",
     "Korea Republic": "South Korea", "IR Iran": "Iran", "USA": "United States",
     "Chinese Taipei": "Taiwan", "Cape Verde Islands": "Cape Verde",
+    "Türkiye": "Turkey", "Turkiye": "Turkey", "Türkʹiye": "Turkey",
 }
 
 

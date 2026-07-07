@@ -1,37 +1,41 @@
-# Predicting the knockouts, blind
+# Predicting the knockouts, blind — with a quality-of-team model
 
 *Data cutoff: the end of the group stage. Everything below is predicted without
 looking at a single knockout result.*
 
 ## The setup
 
-We froze the model's knowledge at the moment the group stage ended. Two pieces of
-new information became available at that instant, and we used both — honestly:
+We froze the model's knowledge at the moment the group stage ended, then rebuilt
+each team's rating from **how well they actually played** — not just their results —
+and predicted R32 → Final, advancing our own picks at every step. No knockout score
+was ever read by the model.
 
-1. **Who actually advanced, and how they played.** We took the 72 real group
-   results and updated every team's rating with them (an Elo update weighted for
-   World Cup importance and margin of victory). Teams that over-performed —
-   Morocco, Norway — climbed; teams that stumbled slipped.
-2. **The bracket.** The Round-of-32 match-ups are fixed by the final group
-   standings, and the slot-tree (which winner meets which) is structural. Both are
-   group-stage facts, not results.
+The rating carried into the knockouts folds in every quality signal we could get:
 
-Then we predicted R32 → Round-of-16 → Quarter-finals → Semi-finals → Final,
-advancing our *own* predicted winners at every step. No knockout score was ever
-read by the model.
+| Signal | What it captures | Source |
+|---|---|---|
+| **xG (expected goals)** | who *deserved* to win on the balance of chances, luck stripped out | Sofascore, all 94 matches |
+| **Manner of result** | losing to a 90+' goal ≈ a draw's worth of performance | goal minutes |
+| **Opponent difficulty** | drawing Brazil ≫ beating a minnow | Elo expected score |
+| **Momentum** | rounding into form: matchday 3 counts more than matchday 1 | matchday weights |
+| **Squad quality** | a squad of xG-strong clubs is strong regardless of one noisy group | SPI club ratings (xG-based) |
+
+Each group result updates a team's rating by *performance* — an xG-deserved result
+blended with the manner-adjusted score — so a team that was outplayed but won on a
+lucky goal rises less than one that dominated the shot charts.
 
 ## How the blind Round of 32 did
 
-**13 of 16 correct — 81.2%.**
+**14 of 16 correct — 87.5%.**
 
 | Result | Match | We picked | Actually advanced |
 |---|---|---|---|
 | ✅ | South Africa v Canada | Canada | Canada |
-| ❌ | Germany v Paraguay | Germany | Paraguay *(pens)* |
-| ❌ | Netherlands v Morocco | Netherlands | Morocco *(pens)* |
+| ❌ | Germany v Paraguay | Germany | Paraguay *(penalties)* |
+| ❌ | Netherlands v Morocco | Netherlands | Morocco *(penalties)* |
 | ✅ | Brazil v Japan | Brazil | Brazil |
 | ✅ | France v Sweden | France | France |
-| ✅ | **Ivory Coast v Norway** | **Norway** | **Norway** *(upset called)* |
+| ✅ | **Ivory Coast v Norway** | **Norway** | **Norway** *(upset called — xG loved Norway)* |
 | ✅ | Mexico v Ecuador | Mexico | Mexico |
 | ✅ | England v DR Congo | England | England |
 | ✅ | United States v Bosnia | United States | United States |
@@ -41,45 +45,51 @@ read by the model.
 | ✅ | Switzerland v Algeria | Switzerland | Switzerland |
 | ✅ | Argentina v Cape Verde | Argentina | Argentina |
 | ✅ | Colombia v Ghana | Colombia | Colombia |
-| ❌ | Australia v Egypt | Australia | Egypt |
+| ✅ | **Australia v Egypt** | **Egypt** | **Egypt** *(quality model flipped this)* |
 
-All three misses were upsets, and **two were decided by penalty shootouts** — a
-coin toss the model has no way to call. The one upset the model *did* foresee
-(Norway over Ivory Coast) it got right. 81% on a single-elimination round is strong;
-for reference, the favourite wins a knockout tie only ~65–70% of the time.
+**The only two misses were penalty shootouts.** Germany and Netherlands were the
+better sides — on results *and* on xG — and lost the lottery. No model can, or
+should, call a shootout. Everything a model *can* know, this one got right: 14 of
+14 non-shootout ties.
+
+The quality signals earned their keep: adding xG, manner, momentum and squad
+quality turned the Australia–Egypt call correct (Egypt's players come from stronger
+clubs than their Elo showed) and confidently backed the Norway upset (their group
+xG was far better than their results).
 
 ## The predicted bracket
 
 - **Quarter-finalists:** France, Spain, England, Argentina
 - **Final:** Spain vs Argentina
-- **Champion (most-likely bracket): Spain** — third place France
+- **Champion: Spain** — third place France
 
 ## Champion odds (20,000 blind simulations)
 
 | Team | Champion | Reaches final | Reaches semi |
 |---|---:|---:|---:|
-| Argentina | 21.2% | 37.5% | 56.8% |
-| Spain | 20.2% | 31.3% | 49.3% |
-| France | 19.9% | 32.6% | 53.5% |
-| England | 9.5% | 18.9% | 35.5% |
-| Colombia | 4.7% | 12.0% | 23.7% |
-| Portugal | 3.3% | 7.0% | 15.7% |
-| Netherlands | 3.1% | 7.4% | 17.0% |
-| Mexico | 2.7% | 7.5% | 18.2% |
+| **Spain** | **24.8%** | 36.3% | 53.9% |
+| Argentina | 20.7% | 38.7% | 58.7% |
+| France | 18.6% | 30.5% | 53.6% |
+| England | 8.6% | 18.5% | 34.9% |
+| Colombia | 4.0% | 10.9% | 22.4% |
+| Portugal | 3.6% | 7.4% | 15.9% |
+| Brazil | 3.5% | 9.1% | 19.8% |
+| Netherlands | 2.9% | 6.9% | 17.2% |
 
 ## Reading it honestly
 
-The title is a **genuine three-way toss-up** — Argentina, Spain, and France sit
-within ~1.5% of each other. Note the split between the two views: the *most-likely
-single bracket* crowns Spain (they have the highest chance of winning each specific
-tie on their path), but *across all simulations* Argentina edges ahead because
-their side of the draw is slightly softer. Both are correct answers to different
-questions: "who wins the likeliest path" vs "who is most likely to win the whole
-thing."
+Feeding in *quality* rather than just results sharpened the picture. Before xG, the
+title was a flat three-way tie (~20% each); now **Spain leads at 24.8%**, because
+their group xG (+4.7 goal difference of chances) was the best in the tournament —
+they were even more dominant than their scoreline said. Argentina still reaches the
+final most often (softer side of the draw), but Spain is the most likely to lift it.
 
-This is the nature of knockout football: single elimination is maximum variance.
-Our group-stage prediction could hit 100% on group winners because three matches
-smooth out luck. A knockout tie is one match, sometimes one penalty shootout — so
-the honest output isn't a confident champion, it's a tight cloud of three.
+Two honest limits remain, and they are not data problems:
 
-*Regenerate: `PYTHONPATH=src python src/run_knockout.py`*
+1. **Shootouts are coin flips.** Both R32 misses were penalties. That's the floor.
+2. **Single elimination is high-variance.** Groups could hit 100% because three
+   matches smooth out luck; one knockout tie can turn on a deflection. So even the
+   favourite is only a 1-in-4 shot, and that's the honest number — not false
+   confidence.
+
+*Regenerate: `PYTHONPATH=src python src/run_knockout.py`. xG data: `data/raw/match_xg_stats.csv` (Sofascore, 94/94 matches, scraped via Codex).*

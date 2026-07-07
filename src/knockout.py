@@ -15,6 +15,7 @@ from collections import Counter, defaultdict
 import model as M
 import geo
 import evaluate as E
+import quality as Q
 
 # Verified bracket tree (child game id -> the two parent game ids whose winners meet).
 # Reconstructed from the fixed group-seeded structure, not from who won.
@@ -33,24 +34,42 @@ def games_by_id() -> dict:
     return {int(g["id"]): g for g in M.load_games()}
 
 
-def post_group_elo() -> dict[str, float]:
-    """Start from current national Elo and apply Elo updates from the 72 actual
-    group matches. Teams that over-performed in the group stage (Morocco, Norway)
-    rise; flat-track bullies who stumbled fall. This is the 'use the group results'
-    step — the only new information after the cutoff."""
+# How much a group result counts by matchday. Later games count more: a team that
+# rounds into form (loses matchday 1, wins 2 and 3) should rise, not be dragged
+# down by a bad opener. Difficulty of the group is handled automatically by Elo —
+# drawing Brazil moves you far more than beating a minnow.
+MATCHDAY_WEIGHT = {1: 0.6, 2: 1.0, 3: 1.6}
+GROUP_K = 80.0  # base weight for a matchday-2 result; the only in-tournament signal
+
+
+def post_group_elo(base_k: float = GROUP_K, squad_w: float = 25.0) -> dict[str, float]:
+    """Post-group team ratings, using every quality signal we have:
+      - starting point: current national Elo (all nations, results-based)
+      - group results graded by *performance*, not just W/D/L: xG-deserved result
+        (luck stripped out) blended with the manner-adjusted score
+      - opponent difficulty: automatic in Elo's expected score
+      - momentum: later matchdays weighted more (rounding into form)
+      - squad quality: a small nudge from xG-based SPI club ratings
+    This is the 'use the group stage' step — the only new info after the cutoff."""
     elo = dict(M.load_national_elo())
-    for g in M.load_games():
-        if str(g["type"]) != "group" or str(g.get("finished", "")).upper() != "TRUE":
-            continue
+    xg = Q.load_xg()
+    group = [g for g in M.load_games()
+             if str(g["type"]) == "group" and str(g.get("finished", "")).upper() == "TRUE"]
+    group.sort(key=lambda g: int(g.get("matchday", 0)))  # sequential form, MD1 -> MD3
+    for g in group:
         h, a = M.canon(g["home_team_name_en"]), M.canon(g["away_team_name_en"])
-        hs, as_ = int(g["home_score"]), int(g["away_score"])
-        ea = 1 / (1 + 10 ** ((elo.get(a, 1500) - elo.get(h, 1500)) / 400))
-        sa = 1.0 if hs > as_ else (0.5 if hs == as_ else 0.0)
-        gd = abs(hs - as_)
-        k = 40 * (1.0 if gd <= 1 else 1.5 if gd == 2 else (11 + gd) / 8)  # WC weight + margin
-        delta = k * (sa - ea)
+        md_w = MATCHDAY_WEIGHT.get(int(g.get("matchday", 2)), 1.0)  # momentum
+        ea = 1 / (1 + 10 ** ((elo.get(a, 1500) - elo.get(h, 1500)) / 400))  # opponent difficulty
+        perf_h, _ = Q.match_performance(g, xg)  # xG-deserved + manner, in [0,1]
+        gd = abs(int(g["home_score"]) - int(g["away_score"]))
+        k = base_k * md_w * (1.0 if gd <= 1 else 1.25 if gd == 2 else 1.5)  # mild margin
+        delta = k * (perf_h - ea)
         elo[h] = elo.get(h, 1500) + delta
         elo[a] = elo.get(a, 1500) - delta
+    # small static prior: xG-based squad quality (helps thinly-rated nations)
+    if squad_w:
+        for team, z in Q.squad_quality().items():
+            elo[M.canon(team)] = elo.get(M.canon(team), 1500) + squad_w * z
     return elo
 
 

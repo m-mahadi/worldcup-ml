@@ -25,17 +25,21 @@ match results is leaking the answer into the model (we demonstrate exactly how).
 ## Predicting the knockouts, blind
 
 Freezing the model's knowledge at the **end of the group stage** — feeding in the
-real group results but *no knockout result* — we predict the whole bracket to the
-final:
+real group results but *no knockout result* — we rebuild each team's rating from
+**how well they actually played** and predict the whole bracket to the final. The
+rating uses every quality signal we have: **xG** (who deserved to win, luck removed —
+scraped for all 94 matches), **manner of result** (late goals), **opponent
+difficulty**, **momentum** (matchday 3 > matchday 1), and **xG-based squad quality**.
 
-- **Blind Round-of-32 accuracy: 13/16 (81%).** All three misses were upsets, two
-  decided on penalties. The one upset we *called* (Norway over Ivory Coast) landed.
-- **Predicted champion: Spain** (final vs Argentina) on the most-likely bracket.
-- **Champion odds are a three-way toss-up:** Argentina 21%, Spain 20%, France 20%.
+- **Blind Round-of-32 accuracy: 14/16 (87.5%).** The only two misses were **penalty
+  shootouts** — coin flips no model can call. Every non-shootout tie: 14/14.
+- **Predicted champion: Spain** (final vs Argentina).
+- **Champion odds:** Spain 24.8%, Argentina 20.7%, France 18.6% — xG makes Spain a
+  clear favourite (they had the tournament's best chance-creation).
 
-Knockout football is single-elimination — maximum variance — so the honest output
-isn't one confident champion but a tight cloud of three. Full write-up in
-`outputs/knockout_report.md`; run it with `PYTHONPATH=src python src/run_knockout.py`.
+Knockout football is single-elimination — maximum variance — so even the favourite
+is a 1-in-4 shot. Full write-up in `outputs/knockout_report.md`; run it with
+`PYTHONPATH=src python src/run_knockout.py`.
 
 ## The one honest surprise
 

@@ -1,0 +1,95 @@
+match_id,stage,date,team1,team2,team1_score,team2_score
+1,group,06/11/2026,Mexico,South Africa,2,0
+2,group,06/11/2026,South Korea,Czech Republic,2,1
+3,group,06/12/2026,Canada,Bosnia and Herzegovina,1,1
+4,group,06/12/2026,United States,Paraguay,4,1
+5,group,06/13/2026,Haiti,Scotland,0,1
+6,group,06/13/2026,Australia,Turkey,2,0
+7,group,06/13/2026,Brazil,Morocco,1,1
+8,group,06/13/2026,Qatar,Switzerland,1,1
+9,group,06/14/2026,Ivory Coast,Ecuador,1,0
+10,group,06/14/2026,Germany,Curaçao,7,1
+11,group,06/14/2026,Netherlands,Japan,2,2
+12,group,06/14/2026,Sweden,Tunisia,5,1
+13,group,06/15/2026,Iran,New Zealand,2,2
+14,group,06/15/2026,Spain,Cape Verde,0,0
+15,group,06/15/2026,Belgium,Egypt,1,1
+16,group,06/15/2026,Saudi Arabia,Uruguay,1,1
+17,group,06/16/2026,France,Senegal,3,1
+18,group,06/16/2026,Iraq,Norway,1,4
+19,group,06/16/2026,Argentina,Algeria,3,0
+20,group,06/16/2026,Austria,Jordan,3,1
+21,group,06/17/2026,Portugal,Democratic Republic of the Congo,1,1
+22,group,06/17/2026,England,Croatia,4,2
+23,group,06/17/2026,Uzbekistan,Colombia,1,3
+24,group,06/17/2026,Ghana,Panama,1,0
+25,group,06/18/2026,Mexico,South Korea,1,0
+26,group,06/18/2026,Switzerland,Bosnia and Herzegovina,4,1
+27,group,06/18/2026,Canada,Qatar,6,0
+28,group,06/18/2026,Czech Republic,South Africa,1,1
+29,group,06/19/2026,Brazil,Haiti,3,0
+30,group,06/19/2026,Scotland,Morocco,0,1
+31,group,06/19/2026,United States,Australia,2,0
+32,group,06/19/2026,Turkey,Paraguay,0,1
+33,group,06/20/2026,Germany,Ivory Coast,2,1
+34,group,06/20/2026,Ecuador,Curaçao,0,0
+35,group,06/20/2026,Netherlands,Sweden,5,1
+36,group,06/20/2026,Tunisia,Japan,0,4
+37,group,06/21/2026,Belgium,Iran,0,0
+38,group,06/21/2026,New Zealand,Egypt,1,3
+39,group,06/21/2026,Spain,Saudi Arabia,4,0
+40,group,06/21/2026,Uruguay,Cape Verde,2,2
+41,group,06/22/2026,France,Iraq,3,0
+42,group,06/22/2026,Norway,Senegal,3,2
+43,group,06/22/2026,Argentina,Austria,2,0
+44,group,06/22/2026,Jordan,Algeria,1,2
+45,group,06/23/2026,Portugal,Uzbekistan,5,0
+46,group,06/23/2026,Panama,Croatia,0,1
+47,group,06/23/2026,Colombia,Democratic Republic of the Congo,1,0
+48,group,06/23/2026,England,Ghana,0,0
+49,group,06/24/2026,Scotland,Brazil,0,3
+50,group,06/24/2026,Morocco,Haiti,4,2
+51,group,06/24/2026,South Africa,South Korea,1,0
+52,group,06/24/2026,Czech Republic,Mexico,0,3
+53,group,06/24/2026,Bosnia and Herzegovina,Qatar,3,1
+54,group,06/24/2026,Switzerland,Canada,2,1
+55,group,06/25/2026,Curaçao,Ivory Coast,0,2
+56,group,06/25/2026,Ecuador,Germany,2,1
+57,group,06/25/2026,Paraguay,Australia,0,0
+58,group,06/25/2026,Turkey,United States,3,2
+59,group,06/25/2026,Japan,Sweden,1,1
+60,group,06/25/2026,Tunisia,Netherlands,1,3
+61,group,06/26/2026,Senegal,Iraq,5,0
+62,group,06/26/2026,Norway,France,1,4
+63,group,06/26/2026,Egypt,Iran,1,1
+64,group,06/26/2026,New Zealand,Belgium,1,5
+65,group,06/26/2026,Cape Verde,Saudi Arabia,0,0
+66,group,06/26/2026,Uruguay,Spain,0,1
+67,group,06/27/2026,Panama,England,0,2
+68,group,06/27/2026,Croatia,Ghana,2,1
+69,group,06/27/2026,Algeria,Austria,3,3
+70,group,06/27/2026,Jordan,Argentina,1,3
+71,group,06/27/2026,Colombia,Portugal,0,0
+72,group,06/27/2026,Democratic Republic of the Congo,Uzbekistan,3,1
+73,r32,06/28/2026,South Africa,Canada,0,1
+74,r32,06/29/2026,Germany,Paraguay,1,1
+75,r32,06/29/2026,Netherlands,Morocco,1,1
+76,r32,06/29/2026,Brazil,Japan,2,1
+77,r32,06/30/2026,France,Sweden,3,0
+78,r32,06/30/2026,Ivory Coast,Norway,1,2
+79,r32,06/30/2026,Mexico,Ecuador,2,0
+80,r32,07/01/2026,England,Democratic Republic of the Congo,2,1
+81,r32,07/01/2026,United States,Bosnia and Herzegovina,2,0
+82,r32,07/01/2026,Belgium,Senegal,3,2
+83,r32,07/02/2026,Portugal,Croatia,2,1
+84,r32,07/02/2026,Spain,Austria,3,0
+85,r32,07/02/2026,Switzerland,Algeria,2,0
+86,r32,07/03/2026,Argentina,Cape Verde,3,2
+87,r32,07/03/2026,Colombia,Ghana,1,0
+88,r32,07/03/2026,Australia,Egypt,1,1
+89,r16,07/04/2026,Paraguay,France,0,1
+90,r16,07/04/2026,Canada,Morocco,0,3
+91,r16,07/05/2026,Brazil,Norway,1,2
+92,r16,07/05/2026,Mexico,England,2,3
+93,r16,07/06/2026,Portugal,Spain,0,1
+94,r16,07/06/2026,United States,Belgium,1,4
