@@ -89,6 +89,9 @@ outputs/
 - Club-strength ratings from SPI club rankings.
 - Squad/player lists from official World Cup squad data.
 
+The xG collection prompt is kept in `CODEX_XG_SCRAPE_PROMPT.md` so the
+match-level performance data can be audited or refreshed later.
+
 ## Notes on interpretation
 
 - Single-match result prediction tops out around the low 60s because draws and

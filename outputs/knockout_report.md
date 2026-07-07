@@ -127,4 +127,4 @@ Two honest limits remain, and they are not data problems:
    favourite is only a 1-in-4 shot, and that's the honest number — not false
    confidence.
 
-*Regenerate: `PYTHONPATH=src python src/run_knockout.py`. xG data: `data/raw/match_xg_stats.csv` (Sofascore, 94/94 matches).*
+*Regenerate: `PYTHONPATH=src python src/run_knockout.py`. xG data: `data/raw/match_xg_stats.csv` (Sofascore, 94/94 matches, scraped via Codex).*
