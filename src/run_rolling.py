@@ -32,19 +32,20 @@ def main():
           f"{h1+h2}/{n1+n2} = {(h1+h2)/(n1+n2):.1%} ===")
     print("    (misses: 2 penalty shootouts in R32 + 1 on-day upset in R16)")
 
-    # Live view: predict the rest of the bracket from the most advanced cutoff (R32)
-    w = K.predict_bracket(mdl_r32, deterministic=True, start="r16")
-    print("\n=== PREDICTED REST OF BRACKET (from end-of-R32 ratings) ===")
+    # Live forecast: use EVERYTHING played so far as fact, predict only the rest.
+    mdl_live = K.build_model(K.post_r16_elo())
+    w = K.predict_forward(mdl_live, deterministic=True)
+    print("\n=== LIVE FORECAST — all results so far are fixed, predict the rest ===")
     print(f"  Remaining R16 (95,96): {w[95]}, {w[96]}")
     print(f"  Quarter-finalists    : {[w[i] for i in (97,98,99,100)]}")
     print(f"  Final                : {w[101]} vs {w[102]}   ->  CHAMPION: {w[104]}")
 
-    probs = pd.DataFrame(K.champion_probabilities(mdl_r32, runs=20000, start="r16"))
-    probs.to_csv(M.ROOT / "outputs" / "champion_probabilities_post_r32.csv", index=False)
-    print("\n=== CHAMPION ODDS (from end-of-R32, 20k sims) ===")
+    probs = pd.DataFrame(K.champion_probabilities_forward(mdl_live, runs=20000))
+    probs.to_csv(M.ROOT / "outputs" / "champion_probabilities_live.csv", index=False)
+    print("\n=== CHAMPION ODDS (results so far fixed, rest simulated, 20k) ===")
     for r in probs.head(8).to_dict("records"):
         print(f"  {r['team']:<14}{r['champion_%']:>6.1f}% champ  {r['final_%']:>5.1f}% final  {r['semifinal_%']:>5.1f}% SF")
-    print("\nsaved -> outputs/champion_probabilities_post_r32.csv")
+    print("\nsaved -> outputs/champion_probabilities_live.csv")
 
 
 if __name__ == "__main__":

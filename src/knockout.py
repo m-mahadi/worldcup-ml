@@ -100,6 +100,62 @@ def post_r32_elo() -> dict[str, float]:
     return apply_knockout_round(post_group_elo(), range(73, 89))
 
 
+def post_r16_elo() -> dict[str, float]:
+    """Ratings after everything played so far: groups + R32 + the finished R16
+    games. apply_knockout_round skips unfinished matches, so pending R16 ties
+    (95, 96) are left to be predicted."""
+    return apply_knockout_round(post_r32_elo(), range(89, 97))
+
+
+def predict_forward(mdl: M.PoissonModel, deterministic=True, rng=None) -> dict[int, str]:
+    """Use ALL results so far as facts and predict only the unplayed games.
+    Every finished match keeps its real advancer; every unplayed match is
+    predicted from whoever (real or predicted) reaches it."""
+    gid = games_by_id()
+    winners: dict[int, str] = {}
+
+    def decide(t1, t2, stadium):
+        pa = p_advance(mdl, t1, t2, stadium)
+        if deterministic:
+            return t1 if pa >= 0.5 else t2
+        return t1 if rng.random() < pa else t2
+
+    order = list(range(73, 89)) + list(range(89, 97)) + [97, 98, 99, 100, 101, 102, 104, 103]
+    for i in order:
+        g = gid[i]
+        if i <= 96:                       # R32 + R16 have real match-ups in the fixture
+            t1 = M.canon(g.get("home_team_name_en") or "")
+            t2 = M.canon(g.get("away_team_name_en") or "")
+        elif i == 103:                    # third place = the two semi losers
+            t1 = winners[97] if winners[101] != winners[97] else winners[98]
+            t2 = winners[99] if winners[102] != winners[99] else winners[100]
+        else:                             # QF, SF, Final from the bracket
+            pa, pb = BRACKET[i]
+            t1, t2 = winners[pa], winners[pb]
+        if str(g.get("finished", "")).upper() == "TRUE":
+            winners[i] = actual_advancer(gid, i)      # a fact, not a prediction
+        else:
+            winners[i] = decide(t1, t2, g["stadium_id"])
+    return winners
+
+
+def champion_probabilities_forward(mdl: M.PoissonModel, runs: int = 20000) -> list[dict]:
+    """Champion odds conditioned on everything that has actually happened: finished
+    games are fixed, only the remaining bracket is simulated."""
+    rng = random.Random(2026)
+    champ, final, semi = Counter(), Counter(), Counter()
+    for _ in range(runs):
+        w = predict_forward(mdl, deterministic=False, rng=rng)
+        champ[w[104]] += 1
+        final[w[101]] += 1; final[w[102]] += 1
+        for i in (97, 98, 99, 100):
+            semi[w[i]] += 1
+    teams = set(champ) | set(final) | set(semi)
+    rows = [{"team": t, "champion_%": 100 * champ[t] / runs, "final_%": 100 * final[t] / runs,
+             "semifinal_%": 100 * semi[t] / runs} for t in teams]
+    return sorted(rows, key=lambda r: -r["champion_%"])
+
+
 def build_model(elo: dict) -> M.PoissonModel:
     mdl = M.fit_poisson(M.load_results(), elo=elo, elo_blend=0.5, half_life_years=2.5)
     return mdl
