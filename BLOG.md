@@ -34,8 +34,6 @@ Then I added a few more things.
 
 Current strength ratings for all 244 countries, pulled from a public Elo site. Ratings for 464 clubs, so I could measure how good a squad is from where its players play their club football. The official squad lists, 1,248 players. And the big one for later: expected goals for all 94 World Cup matches played so far.
 
-One boring but honest note. The Python I was running had a broken security stack that crashed on every web request. So I pulled some of this through PowerShell instead. Real data work is thirty percent plumbing.
-
 ## The rating
 
 The strength backbone is an Elo rating. It is the same idea as chess ranking.

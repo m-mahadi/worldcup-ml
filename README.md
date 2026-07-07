@@ -1,105 +1,106 @@
 # worldcup-ml
 
-Predicting the 2026 World Cup group stage — honestly. No leakage, no cheating,
-and a clear line between what a model can and cannot know about football.
+An honest 2026 World Cup prediction project.
 
-## The headline result
+The goal is not to claim a magic bracket. It is to find which questions a model can
+answer well, and where football becomes too noisy for a single-match prediction to
+be trusted.
 
-**We predict who wins each group with 100% accuracy (12/12), and who advances
-with 84% accuracy (27/32) — using current national ratings plus a geographic
-home advantage.**
+## Results
 
-Match-by-match win/draw/loss tops out around **63%**, because ~28% of matches are
-draws and draws are close to random. That is a wall, not a bug: bookmakers, who
-price these games for a living, sit at ~53–55%. Anyone claiming 90%+ on individual
-match results is leaking the answer into the model (we demonstrate exactly how).
+| Target | Result |
+|---|---:|
+| Group winners | 12 / 12 |
+| Teams that advanced from groups | 27 / 32 |
+| Match win/draw/loss accuracy | about 63% |
+| Blind Round of 32 picks | 14 / 16 |
+| Knockout walk-forward picks | 19 / 22 |
 
-| Target | Best honest result |
-|---|---|
-| **Group winners** | **12 / 12 (100%)** |
-| Teams that advance (Round-of-32) | 27 / 32 (84%) |
-| Advancement ranking (AUC) | 0.865 |
-| Match win/draw/loss accuracy | ~63% |
-| Match accuracy from cheating (leakage) | 100% ← the tell |
+The main finding is simple: current national strength plus travel-adjusted home
+advantage is enough to call the group winners. Richer quality signals, especially
+xG, matter more once the knockouts start.
 
-## Predicting the knockouts, blind
-
-Freezing the model's knowledge at the **end of the group stage** — feeding in the
-real group results but *no knockout result* — we rebuild each team's rating from
-**how well they actually played** and predict the whole bracket to the final. The
-rating uses every quality signal we have: **xG** (who deserved to win, luck removed —
-scraped for all 94 matches), **manner of result** (late goals), **opponent
-difficulty**, **momentum** (matchday 3 > matchday 1), and **xG-based squad quality**.
-
-Then, as the tournament advances, we move the cutoff forward a round at a time and
-predict the next round blind (`src/run_rolling.py`):
-
-- **Cutoff = groups → predict R32: 14/16.** Cutoff = **R32 → predict R16: 5/6.**
-- **Walk-forward total: 19/22 = 86%** on every knockout game so far. The only misses
-  were **two penalty shootouts and one on-day upset** — everything the better side
-  won in normal time, we called.
-- **Current pick (from end-of-R32): champion Spain** — Spain 26%, France 23%,
-  Argentina 19%.
-
-Knockout football is single-elimination — maximum variance — so even the favourite
-is a 1-in-4 shot. Full write-up in `outputs/knockout_report.md`; run it with
-`PYTHONPATH=src python src/run_knockout.py`.
-
-## The one honest surprise
-
-A plain **ranking by current national Elo, plus a geographic home advantage,
-matches or beats the machine-learning model** on qualification. The fancy Poisson
-goals model, gradient tricks, and squad-chemistry features add nothing to *who
-advances*. The signal that matters is simply: how good is each team right now, and
-how close to home they're playing. Everything else is the tournament being partly
-random.
-
-**Home advantage is modelled as a gradient, not a switch.** A team in its own
-country gets the full bonus; everyone else gets a share that decays with travel
-distance to the actual match venue (`src/geo.py`). So Mexico ≈ 80 Elo, USA/Canada
-95 at home, Haiti/Colombia/Panama/Curaçao 27–44 (nearby + big travelling support),
-and Argentina/Japan/Australia 1–5 (flown across the world). That's why USA win
-Group D over Turkey — a call pure ratings miss.
-
-## What's in here
-
-```
-data/raw/         inputs (international results, national Elo, WC fixtures, SPI, squads)
-src/model.py      Poisson goals model (attack/defence by weighted MLE) + national-Elo blend
-src/geo.py        geographic home advantage (distance-decayed travel/crowd bonus)
-src/evaluate.py   walk-forward match eval + group-stage qualification + advancement AUC
-src/run.py        fits every config, runs feature selection, prints the scoreboard
-outputs/          metrics.csv (all configs) + report.md (the write-up)
-```
-
-## Run it
+## Quickstart
 
 ```bash
-# uses the bundled python; needs only numpy + pandas
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
 PYTHONPATH=src python src/run.py
+PYTHONPATH=src python src/run_rolling.py
+PYTHONPATH=src python src/run_knockout.py
+PYTHONPATH=src python src/make_bracket_svg.py
+```
+
+On Windows PowerShell:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+$env:PYTHONPATH = "src"
+python src/run.py
+python src/run_rolling.py
+python src/run_knockout.py
+python src/make_bracket_svg.py
+```
+
+## Repository map
+
+```text
+data/raw/
+  international_results.csv       historical national-team results
+  eloratings_world.tsv            current national Elo snapshot
+  worldcup2026_api_games.json     World Cup fixtures and results
+  worldcup2026_api_stadiums.json  host stadium metadata
+  match_xg_stats.csv              match-level xG data
+  squad_players.csv               squad/player data
+  spi_club_rankings.csv           club-strength ratings
+
+src/
+  model.py             data loading, Elo, Poisson goals model
+  geo.py               distance-based home advantage
+  evaluate.py          group-stage and validation scoring
+  knockout.py          knockout rating updates and simulations
+  quality.py           xG and squad-quality adjustments
+  run.py               group-stage model comparison
+  run_knockout.py      blind knockout bracket prediction
+  run_rolling.py       walk-forward knockout evaluation
+  make_bracket_svg.py  bracket visualization
+  cheating_demos.py    overfitting/leakage demos
+
+outputs/
+  metrics.csv
+  report.md
+  knockout_report.md
+  knockout_bracket.csv
+  champion_probabilities*.csv
+  predicted_bracket.svg
 ```
 
 ## Data sources
 
-- **International results 1872–2026** (~49.5k matches) — the strength backbone,
-  including AFCON, Euro, Copa América, Nations League, and World Cup qualifiers.
-- **Current national Elo** (eloratings.net, all 244 nations) — the single most
-  useful feature; covers every country equally, including African sides with no
-  Big-Five club data.
-- **2026 World Cup fixtures + live results** — used only after a match is played.
-- **SPI club ratings** and **FIFA squad lists** — club-strength coverage (available
-  in the model, not needed for the headline result).
+- Historical international results from public match-result datasets.
+- National Elo ratings from eloratings.net.
+- 2026 World Cup fixtures, venues, and played results.
+- Match xG from Sofascore.
+- Club-strength ratings from SPI club rankings.
+- Squad/player lists from official World Cup squad data.
 
-## Honesty notes
+## Notes on interpretation
 
-- Every accuracy is on the **real 2026 group stage — 72 matches the model never
-  trained on.** The walk-forward number (train pre-2024, test after) confirms the
-  engine generalizes at ~62%, so the World Cup numbers aren't a fluke.
-- The national Elo is a *current* snapshot, so its blend weight can only be tuned
-  on these 72 games — we keep it modest to avoid memorising them.
-- The geographic home advantage is independently justified: home advantage is one
-  of the most robust effects in football (~60–100 Elo). We model it as a smooth
-  decay with travel distance rather than a host-only switch, and it fixes exactly
-  the one miss pure ratings make (host USA over Turkey).
+- Single-match result prediction tops out around the low 60s because draws and
+  knockout variance are genuinely hard to predict.
+- Group winners are easier because three matches smooth out some luck.
+- Penalty shootouts are treated as high-variance outcomes, not as something the
+  model should pretend to know.
+- The leakage demo in `src/cheating_demos.py` exists to show why perfect-looking
+  sports models are usually using information from after the match.
 
-See `outputs/report.md` for the full step-by-step story.
+## Write-up
+
+- Public essay: `BLOG.md`
+- Technical report: `outputs/report.md`
+- Knockout report: `outputs/knockout_report.md`
