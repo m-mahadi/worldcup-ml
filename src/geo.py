@@ -52,11 +52,17 @@ def haversine(a: tuple[float, float], b: tuple[float, float]) -> float:
     return 2 * 6371 * math.asin(math.sqrt(d))
 
 
+_SID2CITY: dict | None = None
+
+
 def _stadium_city() -> dict[str, tuple[str, str]]:
-    import json
-    s = json.loads((M.RAW / "worldcup2026_api_stadiums.json").read_text(encoding="utf-8"))
-    arr = s[list(s.keys())[0]] if isinstance(s, dict) else s
-    return {str(st["id"]): (st["city_en"].split(" (")[0], M.canon(st["country_en"])) for st in arr}
+    global _SID2CITY
+    if _SID2CITY is None:
+        import json
+        s = json.loads((M.RAW / "worldcup2026_api_stadiums.json").read_text(encoding="utf-8"))
+        arr = s[list(s.keys())[0]] if isinstance(s, dict) else s
+        _SID2CITY = {str(st["id"]): (st["city_en"].split(" (")[0], M.canon(st["country_en"])) for st in arr}
+    return _SID2CITY
 
 
 def venue_bonus_elo(team: str, stadium_id: str, sid2city: dict) -> float:

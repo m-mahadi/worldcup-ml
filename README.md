@@ -22,6 +22,21 @@ match results is leaking the answer into the model (we demonstrate exactly how).
 | Match win/draw/loss accuracy | ~63% |
 | Match accuracy from cheating (leakage) | 100% ← the tell |
 
+## Predicting the knockouts, blind
+
+Freezing the model's knowledge at the **end of the group stage** — feeding in the
+real group results but *no knockout result* — we predict the whole bracket to the
+final:
+
+- **Blind Round-of-32 accuracy: 13/16 (81%).** All three misses were upsets, two
+  decided on penalties. The one upset we *called* (Norway over Ivory Coast) landed.
+- **Predicted champion: Spain** (final vs Argentina) on the most-likely bracket.
+- **Champion odds are a three-way toss-up:** Argentina 21%, Spain 20%, France 20%.
+
+Knockout football is single-elimination — maximum variance — so the honest output
+isn't one confident champion but a tight cloud of three. Full write-up in
+`outputs/knockout_report.md`; run it with `PYTHONPATH=src python src/run_knockout.py`.
+
 ## The one honest surprise
 
 A plain **ranking by current national Elo, plus a geographic home advantage,

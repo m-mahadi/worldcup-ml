@@ -1,0 +1,33 @@
+game,round,team1,team2,predicted_winner,actual_advancer,blind_correct
+73,r32,South Africa,Canada,Canada,Canada,1
+74,r32,Germany,Paraguay,Germany,Paraguay,0
+75,r32,Netherlands,Morocco,Netherlands,Morocco,0
+76,r32,Brazil,Japan,Brazil,Brazil,1
+77,r32,France,Sweden,France,France,1
+78,r32,Ivory Coast,Norway,Norway,Norway,1
+79,r32,Mexico,Ecuador,Mexico,Mexico,1
+80,r32,England,DR Congo,England,England,1
+81,r32,United States,Bosnia and Herzegovina,United States,United States,1
+82,r32,Belgium,Senegal,Belgium,Belgium,1
+83,r32,Portugal,Croatia,Portugal,Portugal,1
+84,r32,Spain,Austria,Spain,Spain,1
+85,r32,Switzerland,Algeria,Switzerland,Switzerland,1
+86,r32,Argentina,Cape Verde,Argentina,Argentina,1
+87,r32,Colombia,Ghana,Colombia,Colombia,1
+88,r32,Australia,Egypt,Australia,Egypt,0
+89,r16,Germany,France,France,France,1
+90,r16,Canada,Netherlands,Netherlands,Morocco,0
+91,r16,Brazil,Norway,Brazil,Norway,0
+92,r16,Mexico,England,England,England,1
+93,r16,Portugal,Spain,Spain,Spain,1
+94,r16,United States,Belgium,United States,Belgium,0
+95,r16,Argentina,Australia,Argentina,,
+96,r16,Switzerland,Colombia,Colombia,,
+97,qf,France,Netherlands,France,,
+98,qf,Spain,United States,Spain,,
+99,qf,Brazil,England,England,,
+100,qf,Argentina,Colombia,Argentina,,
+101,sf,France,Spain,Spain,,
+102,sf,England,Argentina,Argentina,,
+103,third,(semi losers),(semi losers),France,,
+104,final,Spain,Argentina,Spain,,
