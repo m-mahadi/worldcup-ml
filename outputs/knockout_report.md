@@ -76,6 +76,41 @@ xG was far better than their results).
 | Brazil | 3.5% | 9.1% | 19.8% |
 | Netherlands | 2.9% | 6.9% | 17.2% |
 
+## Update — moving the cutoff forward (walk-forward)
+
+As the tournament advances we move the data cutoff forward one round at a time and
+predict the *next* round blind, folding each completed round's results (with xG)
+into the ratings. This is the honest test: predict, then reveal.
+
+| Cutoff | Predicts | Blind accuracy |
+|---|---|---|
+| End of group stage | Round of 32 | **14 / 16** |
+| End of Round of 32 | Round of 16 | **5 / 6** |
+| **Combined walk-forward** | every knockout game so far | **19 / 22 = 86%** |
+
+The three total misses: **two penalty shootouts** (R32) and **one on-day upset**
+(Norway 2–1 Brazil in the R16). Everything decided in normal time by the better
+side, the model called. Note the R32 xG did its job: Morocco *outplayed* Netherlands
+on xG (1.38 vs 0.24) despite winning on penalties, so the model rightly rated them
+up and then correctly picked **Morocco over Canada** in the R16.
+
+**Latest prediction, from the end-of-R32 ratings:**
+
+- Remaining Round-of-16 (still to play): Argentina and Colombia to advance
+- Quarter-finalists: France, Spain, England, Argentina
+- Final: **Spain vs Argentina → champion Spain**
+
+| Team | Champion | Reaches final | Reaches semi |
+|---|---:|---:|---:|
+| **Spain** | **26.4%** | 37.9% | 58.7% |
+| France | 22.6% | 36.8% | 67.4% |
+| Argentina | 18.5% | 37.4% | 59.2% |
+| England | 7.5% | 17.2% | 32.7% |
+| Brazil | 5.0% | 13.3% | 28.9% |
+| Morocco | 3.9% | 9.3% | 25.7% |
+
+*(`PYTHONPATH=src python src/run_rolling.py`)*
+
 ## Reading it honestly
 
 Feeding in *quality* rather than just results sharpened the picture. Before xG, the

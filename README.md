@@ -31,11 +31,15 @@ rating uses every quality signal we have: **xG** (who deserved to win, luck remo
 scraped for all 94 matches), **manner of result** (late goals), **opponent
 difficulty**, **momentum** (matchday 3 > matchday 1), and **xG-based squad quality**.
 
-- **Blind Round-of-32 accuracy: 14/16 (87.5%).** The only two misses were **penalty
-  shootouts** — coin flips no model can call. Every non-shootout tie: 14/14.
-- **Predicted champion: Spain** (final vs Argentina).
-- **Champion odds:** Spain 24.8%, Argentina 20.7%, France 18.6% — xG makes Spain a
-  clear favourite (they had the tournament's best chance-creation).
+Then, as the tournament advances, we move the cutoff forward a round at a time and
+predict the next round blind (`src/run_rolling.py`):
+
+- **Cutoff = groups → predict R32: 14/16.** Cutoff = **R32 → predict R16: 5/6.**
+- **Walk-forward total: 19/22 = 86%** on every knockout game so far. The only misses
+  were **two penalty shootouts and one on-day upset** — everything the better side
+  won in normal time, we called.
+- **Current pick (from end-of-R32): champion Spain** — Spain 26%, France 23%,
+  Argentina 19%.
 
 Knockout football is single-elimination — maximum variance — so even the favourite
 is a 1-in-4 shot. Full write-up in `outputs/knockout_report.md`; run it with

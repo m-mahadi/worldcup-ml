@@ -73,6 +73,33 @@ def post_group_elo(base_k: float = GROUP_K, squad_w: float = 25.0) -> dict[str, 
     return elo
 
 
+def apply_knockout_round(elo: dict, stage_ids: range, base_k: float = GROUP_K) -> dict:
+    """Update ratings with completed knockout matches, graded by performance
+    (xG-deserved + manner), so a penalty-shootout 'winner' who was outplayed does
+    NOT rise. Used to move the data cutoff forward one round at a time."""
+    gid = games_by_id()
+    xg = Q.load_xg()
+    for i in stage_ids:
+        g = gid.get(i)
+        if not g or str(g.get("finished", "")).upper() != "TRUE":
+            continue
+        h, a = M.canon(g["home_team_name_en"]), M.canon(g["away_team_name_en"])
+        ea = 1 / (1 + 10 ** ((elo.get(a, 1500) - elo.get(h, 1500)) / 400))
+        perf_h, _ = Q.match_performance(g, xg)  # shootouts read ~0.5/0.5 unless xG says otherwise
+        gd = abs(int(g["home_score"]) - int(g["away_score"]))
+        k = base_k * (1.0 if gd <= 1 else 1.25 if gd == 2 else 1.5)
+        delta = k * (perf_h - ea)
+        elo[h] = elo.get(h, 1500) + delta
+        elo[a] = elo.get(a, 1500) - delta
+    return elo
+
+
+def post_r32_elo() -> dict[str, float]:
+    """Ratings after the group stage AND the Round of 32 — the cutoff for
+    predicting the Round of 16."""
+    return apply_knockout_round(post_group_elo(), range(73, 89))
+
+
 def build_model(elo: dict) -> M.PoissonModel:
     mdl = M.fit_poisson(M.load_results(), elo=elo, elo_blend=0.5, half_life_years=2.5)
     return mdl
@@ -94,36 +121,61 @@ def r32_matchups(gid: dict) -> list[tuple[int, str, str, str]]:
              gid[i]["stadium_id"]) for i in range(73, 89)]
 
 
-def predict_bracket(mdl: M.PoissonModel, deterministic=True, rng=None) -> dict[int, str]:
-    """Play the whole tree forward. Returns winner of each game id."""
+def predict_bracket(mdl: M.PoissonModel, deterministic=True, rng=None, start="r32") -> dict[int, str]:
+    """Play the tree forward from `start` round. start='r32' predicts everything
+    from the group cutoff; start='r16' seeds the ACTUAL Round-of-16 match-ups
+    (known once the R32 is complete) and predicts from there."""
     gid = games_by_id()
     winners: dict[int, str] = {}
 
-    def play(gid_num, t1, t2, stadium):
+    def play(t1, t2, stadium):
         pa = p_advance(mdl, t1, t2, stadium)
         if deterministic:
             return t1 if pa >= 0.5 else t2
         return t1 if rng.random() < pa else t2
 
-    for i, t1, t2, stad in r32_matchups(gid):        # R32
-        winners[i] = play(i, t1, t2, stad)
-    for i in range(89, 105):                          # R16 -> Final
-        if i not in BRACKET:
-            continue
+    if start == "r32":
+        for i, t1, t2, stad in r32_matchups(gid):
+            winners[i] = play(t1, t2, stad)
+        r16_pair = lambda i: (winners[BRACKET[i][0]], winners[BRACKET[i][1]])
+    else:  # start == "r16": use the real R16 match-ups
+        r16_pair = lambda i: (M.canon(gid[i]["home_team_name_en"]), M.canon(gid[i]["away_team_name_en"]))
+
+    for i in range(89, 97):                           # R16
+        t1, t2 = r16_pair(i)
+        winners[i] = play(t1, t2, gid[i]["stadium_id"])
+    for i in (97, 98, 99, 100, 101, 102, 104):        # QF -> Final
         pa, pb = BRACKET[i]
-        winners[i] = play(i, winners[pa], winners[pb], gid[i]["stadium_id"])
-    # third place (losers of the semis)
-    l1 = [t for t in (winners[BRACKET[101][0]], winners[BRACKET[101][1]]) if t != winners[101]][0]
-    l2 = [t for t in (winners[BRACKET[102][0]], winners[BRACKET[102][1]]) if t != winners[102]][0]
-    winners[103] = play(103, l1, l2, gid[103]["stadium_id"])
+        winners[i] = play(winners[pa], winners[pb], gid[i]["stadium_id"])
+    l1 = [t for t in (winners[97], winners[98]) if t != winners[101]][0]
+    l2 = [t for t in (winners[99], winners[100]) if t != winners[102]][0]
+    winners[103] = play(l1, l2, gid[103]["stadium_id"])
     return winners
 
 
-def champion_probabilities(mdl: M.PoissonModel, runs: int = 20000) -> list[dict]:
+def round_backtest(mdl: M.PoissonModel, game_ids: range) -> dict:
+    """Blind accuracy on the actual match-ups of one knockout round: predict each,
+    then reveal the real advancer. Uses results only to score, never to predict."""
+    gid = games_by_id()
+    hits, rows = [], []
+    for i in game_ids:
+        g = gid.get(i)
+        if not g or str(g.get("finished", "")).upper() != "TRUE":
+            continue
+        t1, t2 = M.canon(g["home_team_name_en"]), M.canon(g["away_team_name_en"])
+        pick = t1 if p_advance(mdl, t1, t2, g["stadium_id"]) >= 0.5 else t2
+        actual = actual_advancer(gid, i)
+        if actual is not None:
+            hits.append(int(pick == actual))
+            rows.append((i, t1, t2, pick, actual, int(pick == actual)))
+    return {"accuracy": sum(hits) / len(hits) if hits else float("nan"), "n": len(hits), "rows": rows}
+
+
+def champion_probabilities(mdl: M.PoissonModel, runs: int = 20000, start: str = "r32") -> list[dict]:
     rng = random.Random(2026)
     champ, final, semi = Counter(), Counter(), Counter()
     for _ in range(runs):
-        w = predict_bracket(mdl, deterministic=False, rng=rng)
+        w = predict_bracket(mdl, deterministic=False, rng=rng, start=start)
         champ[w[104]] += 1
         final[w[101]] += 1; final[w[102]] += 1
         for i in (97, 98, 99, 100):
